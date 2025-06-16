@@ -1,4 +1,4 @@
-package genny
+package gen
 
 import (
 	"context"
@@ -13,27 +13,11 @@ var (
 	charstore = [16]rune{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'}
 )
 
-type Point struct {
-	X int
-	Y int
-}
-
-type Dim struct {
-	W int
-	H int
-}
-
-// hex code 
 type HexCode struct {
 	Value string `json:"value"`
 	Coord *Point `json:"coordinates,omitempty"`
 }
 
-type QueryOptions struct {
-	Count uint
-	Dimensions *Dim
-	SeedValues *[]string
-}
 
 type Option func(*QueryOptions)
 
@@ -60,16 +44,19 @@ func WithClrSeed(seedClrs []string) Option {
 		if len( seedClrs ) < 1 {
 			return
 		}
-		o.SeedValues = &seedClrs
+		o.ClrSeeds = &seedClrs
 	} 
 }
 
+func WithNoise(noiseType string) {
+	
+}
 
 func GenerateNTimes(ctx context.Context, opts ...Option) ([]HexCode, error) {
 	defaultOpts := &QueryOptions{
 		Count: uint(1),
 		Dimensions: nil,
-		SeedValues: nil,
+		ClrSeeds: nil,
 	}
 	result := []HexCode{}
 
@@ -87,8 +74,6 @@ func GenerateNTimes(ctx context.Context, opts ...Option) ([]HexCode, error) {
 	return result, nil
 }
 
-
-
 func generateHexCode(opts *QueryOptions) HexCode {
 	h := HexCode{}
 	p := Point{}
@@ -99,10 +84,12 @@ func generateHexCode(opts *QueryOptions) HexCode {
 		p.X = rand.Intn(opts.Dimensions.W)
 		p.Y = rand.Intn(opts.Dimensions.H)
 		h.Coord = &p
+		//check for if we have noise given
+
 	}
 	
-	if opts.SeedValues != nil { // convert to rgb, then get a color similar to one of the seeds
-		seeds := *opts.SeedValues
+	if opts.ClrSeeds != nil { // convert to rgb, then get a color similar to one of the seeds
+		seeds := *opts.ClrSeeds
 		randIdx := rand.Intn(len(seeds))
 		takeRandClr := seeds[randIdx]
 		r, _ := strconv.ParseInt(takeRandClr[0:2], 16, 0)

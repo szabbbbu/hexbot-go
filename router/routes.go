@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 	
-	hex "hexbot/genny"
+	hex "hexbot/gen"
 )
 
 type Chunk struct {
@@ -117,18 +117,17 @@ func ApiHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-		var countAsNum int = 1
-		var err error
-		if len(possCount) > 0 {
-			countAsNum, _ = strconv.Atoi(possCount)
-		}
-		if (countAsNum < 500) {
-			GenerateSync(&hexResp, countAsNum, wAsInt, hAsInt, sepSeedList)
-		} else {
-			GenerateAsync(&hexResp, countAsNum, wAsInt,hAsInt,sepSeedList)
-		}
+	var countAsNum int = 1
+	var err error
+	if len(possCount) > 0 {
+		countAsNum, _ = strconv.Atoi(possCount)
+	}
+	if (countAsNum < 500) {
+		GenerateSync(&hexResp, countAsNum, wAsInt, hAsInt, sepSeedList)
+	} else {
+		GenerateAsync(&hexResp, countAsNum, wAsInt,hAsInt,sepSeedList)
+	}
 	w.Header().Set("Content-Encoding", "gzip") // set only if we know we're sending back json
-
 	log.Println("STARTING ENCODE")
 
 	err = encoder.Encode(hexResp) //place json resp in request body
