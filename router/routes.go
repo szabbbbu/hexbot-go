@@ -5,13 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"math"
 	"net/http"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
-	
+
 	hex "hexbot/gen"
 )
 
@@ -32,45 +34,75 @@ var (
 
 var validHex = regexp.MustCompile(`(?:[0-9a-fA-F]{3}){1,2}$`)
 
+// dimensions sanity check - ensure width and height get configured as a positive int of 1 or higher
+// giving width & height values of 0 or < get properly converted to some positive number
+func dimSanityCheck (value int) int {
+	if value < 0 {
+		return int(math.Abs(float64(value)))
+	} else if value == 0 {
+		return 1
+	}
+	return value
+}
 
 func GenerateAsync(hexResp *HexbotResponse, count int, w int, h int, seedList []string) {
+	var wg sync.WaitGroup
+
 
 	chunkSize := count / NUM_PROCS
 	chunkRemainder := count % NUM_PROCS
 
 	ch := make(chan Chunk)
-
+	// create a goroutine for each core on the machine
 	for i := 1; i <= NUM_PROCS; i++ {
 		// defer cancelFunc()
 		if i == NUM_PROCS {
 			chunkSize += chunkRemainder
 		}
-		ctx, cancelFunc := context.WithTimeout(context.Background(), time.Second * 10)
-		go func (count uint, w int, h int) {
-			// log.Println("CREATING CHUNK WITH COUNT: ", count, i)
+		wg.Add(1)
+		go func (count uint, w int, h int, waitGroup *sync.WaitGroup) {
+			ctx, cancelFunc := context.WithTimeout(context.Background(), time.Second * 4)
 			defer cancelFunc()
+			defer waitGroup.Done()
+			defer func() {
+				if err := recover(); err != nil {
+					log.Println("Error occurred in a color generation goroutine: ", err)
+				}
+			}()
+				// log.Println("CREATING CHUNK WITH COUNT: ", count, i)
 			data, err := hex.GenerateNTimes(ctx, hex.WithCount(count), hex.WithDim(w, h), hex.WithClrSeed(seedList))
-			ch <- Chunk{
-				Result: data,
-				Error: err,
+			select {
+			case ch <-Chunk{Result: data, Error: err}:
+				log.Println("Successfully got a chunk")
+			case <-ctx.Done():
+				log.Println("Experienced Timeout!")
+
 			}
-		}(uint(chunkSize), w, h)
+		}(uint(chunkSize), w, h, &wg)
 	}
 
-	for i := 0; i < NUM_PROCS; i++ {
-		res := <-ch
-		if (res.Error != nil) {
-			log.Printf("Worker %d failed: %v", i, res.Error)
-			s := "One or more workers experienced a timeout failure. You might be requesting too many points. Sorry!"
-			hexResp.Warning = &s
-        	continue
-		}
-		log.Printf("Worker %d succeeded", i)
-    	hexResp.Colors = append(hexResp.Colors, res.Result...)
-	}
+
+	go func() {
+		wg.Wait()
+		close(ch)
+    }()
+
+    // Collect results
+    for chunk := range ch {
+        hexResp.Colors = append(hexResp.Colors, chunk.Result...)
+        if chunk.Error != nil {
+            log.Printf("Error generating chunk: %v", chunk.Error)
+        }
+    }
+
 }
 
 func GenerateSync(hexResp *HexbotResponse, count int, w int, h int, clrSeeds []string) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Printf("Recovered in goroutine: %v", err)
+		}
+	}()
 	ctx, cancelFunc := context.WithTimeout(context.Background(), time.Second * 10)
 	defer cancelFunc()
 	colors, err := hex.GenerateNTimes(ctx, hex.WithCount(uint(count)), hex.WithDim(w, h), hex.WithClrSeed(clrSeeds))
@@ -99,12 +131,14 @@ func ApiHandler(w http.ResponseWriter, r *http.Request) {
 	defer gz.Close()
 	
 	var sepSeedList []string = []string{}
-	var wAsInt int = 0
-	var hAsInt int = 0
+	var wAsInt int = 1
+	var hAsInt int = 1
 	
 	if (hExists && wExists)  {
 		wAsInt, _ = strconv.Atoi(possWidth[0])
 		hAsInt, _ = strconv.Atoi(possHeight[0])
+		wAsInt = dimSanityCheck(wAsInt)
+		hAsInt = dimSanityCheck(hAsInt)
 	}
 	
 	if (seedsExist) { // parse and remove invalid hex codes

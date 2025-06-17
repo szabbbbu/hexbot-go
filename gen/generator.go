@@ -65,9 +65,6 @@ func GenerateNTimes(ctx context.Context, opts ...Option) ([]HexCode, error) {
 	}
 
 	for i := uint(0); i < defaultOpts.Count; i++ {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
 		newHexCode := generateHexCode(defaultOpts)
 		result = append(result, newHexCode)
 	}
@@ -85,7 +82,6 @@ func generateHexCode(opts *QueryOptions) HexCode {
 		p.Y = rand.Intn(opts.Dimensions.H)
 		h.Coord = &p
 		//check for if we have noise given
-
 	}
 	
 	if opts.ClrSeeds != nil { // convert to rgb, then get a color similar to one of the seeds
